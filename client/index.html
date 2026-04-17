@@ -2,68 +2,113 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebSocket 投票テスト</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .stats { background: #f0f0f0; padding: 15px; border-radius: 8px; }
+        body { 
+            font-family: sans-serif; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center;
+            background-color: #f0f2f5;
+        }
+
+        /* 投票ボタン */
+        #voteBtn {
+            touch-action: manipulation; 
+            
+            position: relative;
+            padding: 20px 50px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 0 6px #0056b3;
+            transition: all 0.05s; /* 反応を速くするために短く設定 */
+            user-select: none;
+            -webkit-tap-highlight-color: transparent; /* iOSのタップ時の青枠を消す */
+        }
+
+        /* 押した瞬間の挙動 */
+        #voteBtn:active {
+            box-shadow: 0 0px #0056b3;
+            transform: translateY(6px);
+        }
+
+        .stats { 
+            margin-top: 30px; 
+            width: 100%;
+            max-width: 350px;
+            background: #fff; 
+            padding: 20px; 
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        #status { font-size: 14px; margin-bottom: 10px; }
         .user-list { margin-top: 10px; }
-        .user-item { border-bottom: 1px solid #ccc; padding: 5px 0; }
+        .user-item { 
+            display: flex; 
+            justify-content: space-between; 
+            border-bottom: 1px solid #eee; 
+            padding: 8px 0; 
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
-    <h1>WebSocket リアルタイム投票</h1>
+    <h1>リアルタイム投票</h1>
     
-    <button id="voteBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
+    <div id="status">接続中...</div>
+
+    <button id="voteBtn">
         投票する！
     </button>
 
-    <div class="stats" style="margin-top: 20px;">
-        <h3>合計投票数: <span id="total">0</span></h3>
-        <div id="status">接続中...</div>
-        
+    <div class="stats">
+        <h3>合計: <span id="total" style="color: #007bff;">0</span></h3>
+        <hr>
         <h4>ユーザー別内訳:</h4>
         <div id="details" class="user-list"></div>
     </div>
 
     <script>
-        // サーバーに接続 (ポート番号はNode.js側と合わせる)
         const socket = new WebSocket('wss://madheavenwebsocket.onrender.com');
-
         const voteBtn = document.getElementById('voteBtn');
         const totalSpan = document.getElementById('total');
         const detailsDiv = document.getElementById('details');
         const statusDiv = document.getElementById('status');
 
-        // 接続完了時
         socket.onopen = () => {
-            statusDiv.innerText = "状態: 接続済み";
+            statusDiv.innerText = "● 接続済み";
             statusDiv.style.color = "green";
         };
 
-        // メッセージ受信時
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            // 合計を表示
             totalSpan.innerText = data.totalVotes;
 
-            // 内訳をリスト表示
             detailsDiv.innerHTML = '';
             data.details.forEach(user => {
                 const item = document.createElement('div');
                 item.className = 'user-item';
-                item.innerText = `ID: ${user.id} — ${user.votes} 票`;
+                item.innerHTML = `<span>ID: ${user.id}</span> <span>${user.votes} 票</span>`;
                 detailsDiv.appendChild(item);
             });
         };
 
-        // 接続終了時
         socket.onclose = () => {
-            statusDiv.innerText = "状態: 切断されました";
+            statusDiv.innerText = "○ 切断されました";
             statusDiv.style.color = "red";
         };
 
-        // ボタンクリックでサーバーへ送信
+        // UIの反応を最速にするため、clickではなくpointerdown（またはmousedown）を使うのも手ですが、
+        // touch-action: manipulation があれば onclick でも十分高速化されます。
         voteBtn.onclick = () => {
             if (socket.readyState === WebSocket.OPEN) {
                 socket.send('vote');
