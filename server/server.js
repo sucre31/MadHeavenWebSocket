@@ -1,52 +1,70 @@
 const WebSocket = require('ws');
-
 const port = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port });
 
-// クライアントごとの情報を保持するMap (Key: ws, Value: { id, votes })
+const CONFIG = {
+    MAX_HEAT: 5.0,          // 1人あたりの上限
+    DECAY_AMOUNT: 0.01,      // 減衰量
+    TICK_INTERVAL: 100,    // 減衰間隔(ms)
+    VOTE_BOOST: 1.0,        // 1回で増える量
+    TRIGGER_THRESHOLD: 0.75  // 熱量によりトリガーする値
+};
+
 const clients = new Map();
 
+// 状態チェックと配信
+function updateAndBroadcast(isBurst = false) {
+    const numUsers = clients.size;
+    if (numUsers === 0) return;
+
+    let totalHeat = 0;
+    clients.forEach(c => totalHeat += c.heat);
+
+    // 熱量割合の計算 (合計 / 理論上の最大値)
+    const maxPossibleHeat = numUsers * CONFIG.MAX_HEAT;
+    const heatRatio = totalHeat / maxPossibleHeat;
+
+    // 60%を超えたらリセット
+    let triggerBurst = isBurst;
+    if (heatRatio >= CONFIG.TRIGGER_THRESHOLD) {
+        triggerBurst = true;
+        clients.forEach(c => c.heat = 0); // 全員リセット
+    }
+
+    const payload = JSON.stringify({
+        type: triggerBurst ? 'BURST' : 'UPDATE', // 閾値を超えた時は特別なタイプを送る
+        totalHeat: parseFloat(totalHeat.toFixed(2)),
+        heatRatio: parseFloat(heatRatio.toFixed(3)),
+        details: Array.from(clients.values()).map(c => ({ id: c.id, heat: parseFloat(c.heat.toFixed(2)) }))
+    });
+
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(payload);
+    });
+}
+
+// 減衰タイマー
+setInterval(() => {
+    clients.forEach(data => {
+        if (data.heat > 0) data.heat = Math.max(0, data.heat - CONFIG.DECAY_AMOUNT);
+    });
+    updateAndBroadcast();
+}, CONFIG.TICK_INTERVAL);
+
 wss.on('connection', (ws) => {
-    // 接続時に初期データを登録
     const clientId = `user_${Math.random().toString(36).substr(2, 5)}`;
-    clients.set(ws, { id: clientId, votes: 0 });
+    clients.set(ws, { id: clientId, heat: 0 });
     
-    console.log(`connected: ${clientId}`);
-
-    ws.on('message', (msg) => {
-        // 送信元のクライアントデータを取得
-        const clientData = clients.get(ws);
-        
-        if (clientData) {
-            // そのクライアントの投票数をインクリメント
-            clientData.votes++;
-            console.log(`${clientData.id} voted. Total: ${clientData.votes}`);
+    ws.on('message', () => {
+        const data = clients.get(ws);
+        if (data) {
+            data.heat = Math.min(CONFIG.MAX_HEAT, data.heat + CONFIG.VOTE_BOOST);
+            updateAndBroadcast();
         }
-
-        // 全体の状況を全員に共有するためのデータ作成
-        const allVotes = Array.from(clients.values()).map(c => ({
-            id: c.id,
-            votes: c.votes
-        }));
-
-        // 全員に現在の集計状況を送信
-        const payload = JSON.stringify({
-            type: 'UPDATE',
-            totalVotes: allVotes.reduce((sum, c) => sum + c.votes, 0),
-            details: allVotes
-        });
-
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(payload);
-            }
-        });
     });
 
     ws.on('close', () => {
-        const clientData = clients.get(ws);
-        console.log(`disconnected: ${clientData?.id}`);
-        // メモリリーク防止のため削除
         clients.delete(ws);
+        updateAndBroadcast();
     });
 });
