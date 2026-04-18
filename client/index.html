@@ -2,38 +2,87 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebSocket 熱量テスト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebSocket 熱量測定</title>
     <style>
+        /* スマホでのスクロールとダブルタップズームを完全に禁止 */
+        html, body {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            touch-action: none; /* スクロールやピンチズームを無効化 */
+        }
+
         body { 
-            font-family: sans-serif; 
-            padding: 20px; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
             display: flex; 
             flex-direction: column; 
             align-items: center;
-            background-color: #f0f2f5;
-            transition: background-color 0.3s;
+            justify-content: center; /* 中央配置 */
+            background-color: #f8f9fc;
+            transition: background-color 0.2s;
+            gap: 30px; /* 要素間のスペースを広めに */
         }
 
-        /* BURST時のフラッシュ演出用クラス */
+        /* BURST時の演出 */
         body.burst-effect {
             background-color: #ff4757;
         }
 
-        /* 投票ボタン（熱量注入ボタン） */
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            color: #2f3542;
+            letter-spacing: 1px;
+        }
+
+        /* ゲージ周り */
+        .gauge-section {
+            width: 85%;
+            max-width: 400px;
+        }
+
+        .gauge-container {
+            width: 100%;
+            height: 35px;
+            background-color: #e0e6ed;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+            border: 1px solid #dcdde1;
+        }
+
+        #heatBar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff9f43, #ff4757);
+            transition: width 0.2s ease-out;
+            box-shadow: 0 0 10px rgba(255, 71, 87, 0.3);
+        }
+
+        #thresholdLabel {
+            font-size: 13px;
+            color: #7f8c8d;
+            text-align: right;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        /* 投票ボタン */
         #voteBtn {
             touch-action: manipulation; 
-            position: relative;
-            padding: 20px 50px;
-            font-size: 24px;
-            font-weight: bold;
+            padding: 25px 60px;
+            font-size: 26px;
+            font-weight: 800;
             color: #fff;
-            background-color: #ff4757; /* 熱量っぽく赤系に */
+            background-color: #ff4757;
             border: none;
-            border-radius: 12px;
+            border-radius: 50px; /* 丸みを持たせる */
             cursor: pointer;
-            outline: none;
-            box-shadow: 0 6px #c0392b;
+            box-shadow: 0 8px 0 #c0392b;
             transition: all 0.05s;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
@@ -41,79 +90,70 @@
 
         #voteBtn:active {
             box-shadow: 0 0px #c0392b;
-            transform: translateY(6px);
+            transform: translateY(8px);
         }
 
-        /* 熱量ゲージのコンテナ */
-        .gauge-container {
-            width: 100%;
-            max-width: 350px;
-            height: 30px;
-            background-color: #ddd;
-            border-radius: 15px;
-            margin: 20px 0;
-            overflow: hidden;
-            border: 2px solid #ccc;
-        }
-
-        /* 熱量ゲージの中身 */
-        #heatBar {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #ff9f43, #ff4757);
-            transition: width 0.3s ease-out;
-        }
-
-        .stats { 
-            width: 100%;
-            max-width: 350px;
+        /* 統計カード */
+        .stats-card { 
+            width: 85%;
+            max-width: 400px;
             background: #fff; 
-            padding: 20px; 
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 25px; 
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
         }
 
-        #status { font-size: 14px; margin-bottom: 10px; }
+        .heat-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 20px;
+        }
+
+        #totalHeat { font-size: 32px; font-weight: bold; color: #ff4757; }
+        #ratioText { font-size: 20px; color: #57606f; }
+
+        #status { font-size: 12px; color: #a4b0be; text-align: center; margin-top: 10px; }
+
+        .user-list { 
+            margin-top: 15px;
+            max-height: 120px; /* リストが増えてもはみ出さないように */
+            overflow-y: auto;
+        }
+
         .user-item { 
             display: flex; 
             justify-content: space-between; 
-            border-bottom: 1px solid #eee; 
-            padding: 8px 0; 
-            font-family: monospace;
-        }
-
-        /* 閾値ライン（60%の位置に印をつける場合） */
-        .threshold-label {
-            font-size: 12px;
-            color: #ff4757;
-            text-align: right;
-            margin-top: -15px;
-            margin-bottom: 15px;
-            width: 100%;
-            max-width: 350px;
+            border-bottom: 1px solid #f1f2f6; 
+            padding: 10px 0; 
+            font-size: 14px;
+            color: #2f3542;
         }
     </style>
 </head>
 <body>
-    <h1>リアルタイム熱量測定</h1>
-    
-    <div id="status">接続中...</div>
+    <div id="status">サーバーに接続しています...</div>
 
-    <div class="gauge-container">
-        <div id="heatBar"></div>
+    <h1>HEAT METER</h1>
+
+    <div class="gauge-section">
+        <div class="gauge-container">
+            <div id="heatBar"></div>
+        </div>
+        <div id="thresholdLabel">BURST: --%</div>
     </div>
-    <div class="threshold-label">BURST 閾値: 60%</div>
 
-    <button id="voteBtn">
-        熱量を送る！
-    </button>
+    <button id="voteBtn">BOOST!</button>
 
-    <div class="stats">
-        <h3>合計熱量: <span id="totalHeat" style="color: #ff4757;">0</span></h3>
-        <p>熱量割合: <span id="ratioText">0</span>%</p>
-        <hr>
-        <h4>ユーザー別内訳:</h4>
-        <div id="details" class="user-list"></div>
+    <div class="stats-card">
+        <div class="heat-main">
+            <span id="totalHeat">0.0</span>
+            <span id="ratioText">0%</span>
+        </div>
+        
+        <div style="border-top: 2px solid #f1f2f6; padding-top: 15px;">
+            <div id="details" class="user-list"></div>
+        </div>
     </div>
 
     <script>
@@ -122,51 +162,68 @@
         const totalSpan = document.getElementById('totalHeat');
         const ratioText = document.getElementById('ratioText');
         const heatBar = document.getElementById('heatBar');
+        const thresholdLabel = document.getElementById('thresholdLabel');
         const detailsDiv = document.getElementById('details');
         const statusDiv = document.getElementById('status');
 
-        socket.onopen = () => {
-            statusDiv.innerText = "● 接続済み";
-            statusDiv.style.color = "green";
+        let currentThreshold = 0.6; // デフォルト
 
+        socket.onopen = () => {
+            statusDiv.innerText = "● ONLINE";
+            statusDiv.style.color = "#2ecc71";
             socket.send(JSON.stringify({ type: 'REGISTER', role: 'player' }));
         };
 
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            // 熱量表示の更新
+
+            // 1. 設定情報の更新
+            if (data.type === 'CONFIG') {
+                currentThreshold = data.threshold;
+                thresholdLabel.innerText = `BURST: ${(currentThreshold * 100).toFixed(0)}%`;
+                return;
+            }
+
+            // 2. 熱量表示の更新
             totalSpan.innerText = data.totalHeat.toFixed(1);
-            const ratioPercent = (data.heatRatio * 100).toFixed(1);
-            ratioText.innerText = ratioPercent;
+            const ratio = data.heatRatio || 0;
+            const ratioPercent = (ratio * 100).toFixed(1);
+            ratioText.innerText = ratioPercent + "%";
+
+            // ゲージ表示（閾値に対してどのくらい溜まっているかを見せるなら ratio / currentThreshold にする）
+            // ここでは全体の100%に対する割合で表示
             heatBar.style.width = Math.min(ratioPercent, 100) + "%";
 
-            // BURST演出（背景を一瞬赤くする）
+            // 3. BURST演出
             if (data.type === 'BURST') {
                 triggerBurstEffect();
             }
 
-            // ユーザー内訳の更新
+            // 4. リスト更新
             detailsDiv.innerHTML = '';
             data.details.forEach(user => {
                 const item = document.createElement('div');
                 item.className = 'user-item';
-                item.innerHTML = `<span>ID: ${user.id}</span> <span>${user.heat.toFixed(1)} H</span>`;
+                item.innerHTML = `<span>ID: ${user.id}</span> <strong>${user.heat.toFixed(1)}</strong>`;
                 detailsDiv.appendChild(item);
             });
         };
 
         function triggerBurstEffect() {
             document.body.classList.add('burst-effect');
+            // モバイルのバイブレーション（対応機種のみ）
+            if (navigator.vibrate) navigator.vibrate(200);
+            
             setTimeout(() => {
                 document.body.classList.remove('burst-effect');
             }, 500);
         }
 
         socket.onclose = () => {
-            statusDiv.innerText = "○ 切断されました";
-            statusDiv.style.color = "red";
+            statusDiv.innerText = "○ OFFLINE";
+            statusDiv.style.color = "#e74c3c";
             voteBtn.disabled = true;
+            voteBtn.style.backgroundColor = "#ccc";
         };
 
         voteBtn.onclick = () => {

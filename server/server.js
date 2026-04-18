@@ -7,10 +7,12 @@ const CONFIG = {
     DECAY_AMOUNT: 0.01,      // 減衰量
     TICK_INTERVAL: 100,    // 減衰間隔(ms)
     VOTE_BOOST: 1.0,        // 1回で増える量
-    TRIGGER_THRESHOLD: 0.75  // 熱量によりトリガーする値
+    TRIGGER_THRESHOLD: 0.75,  // 熱量によりトリガーする値
+    BURST_COOLDOWN: 3000 // BURST後、3秒間は入力を受け付けない
 };
 
 const clients = new Map();
+let isCooldown = false;
 
 // 状態チェックと配信
 function updateAndBroadcast(isBurst = false) {
@@ -28,9 +30,16 @@ function updateAndBroadcast(isBurst = false) {
     const heatRatio = totalHeat / maxPossibleHeat;
 
     let triggerBurst = isBurst;
-    if (heatRatio >= CONFIG.TRIGGER_THRESHOLD) {
+    if (!isCooldown && heatRatio >= CONFIG.TRIGGER_THRESHOLD) {
         triggerBurst = true;
-        players.forEach(p => p.heat = 0); // プレイヤーのみリセット
+        isCooldown = true; // クールダウン開始
+        players.forEach(p => p.heat = 0); // 熱量をリセット
+
+        // 一定時間後にクールダウンを解除
+        setTimeout(() => {
+            isCooldown = false;
+            console.log("Cooldown finished.");
+        }, CONFIG.BURST_COOLDOWN);
     }
 
     const payload = JSON.stringify({
@@ -69,6 +78,8 @@ wss.on('connection', (ws) => {
     console.log(`connected: ${clientId}`);
     
     ws.on('message', (msg) => {
+        if (isCooldown) return;
+        
         const clientData = clients.get(ws);
         
         // JSONを受け取れるように拡張
