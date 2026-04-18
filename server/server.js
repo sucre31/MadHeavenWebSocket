@@ -58,6 +58,15 @@ wss.on('connection', (ws) => {
     
     // 初期状態は一旦 player にしておく
     clients.set(ws, { id: clientId, heat: 0, role: 'player' });
+
+    const configPayload = JSON.stringify({
+        type: 'CONFIG',
+        threshold: CONFIG.TRIGGER_THRESHOLD,
+        maxHeat: CONFIG.MAX_HEAT
+    });
+    ws.send(configPayload);
+
+    console.log(`connected: ${clientId}`);
     
     ws.on('message', (msg) => {
         const clientData = clients.get(ws);
