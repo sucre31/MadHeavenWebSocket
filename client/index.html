@@ -128,6 +128,8 @@
         socket.onopen = () => {
             statusDiv.innerText = "● 接続済み";
             statusDiv.style.color = "green";
+
+            socket.send(JSON.stringify({ type: 'REGISTER', role: 'player' }));
         };
 
         socket.onmessage = (event) => {

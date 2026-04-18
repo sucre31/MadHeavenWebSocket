@@ -14,28 +14,30 @@ const clients = new Map();
 
 // 状態チェックと配信
 function updateAndBroadcast(isBurst = false) {
-    const numUsers = clients.size;
-    if (numUsers === 0) return;
+    // ロールが 'player' の人だけを抽出
+    const players = Array.from(clients.values()).filter(c => c.role === 'player');
+    const numPlayers = players.length;
+
+    if (numPlayers === 0) return; // プレイヤーがいないなら何もしない
 
     let totalHeat = 0;
-    clients.forEach(c => totalHeat += c.heat);
+    players.forEach(p => totalHeat += p.heat);
 
-    // 熱量割合の計算 (合計 / 理論上の最大値)
-    const maxPossibleHeat = numUsers * CONFIG.MAX_HEAT;
+    // 分母を「プレイヤー数」だけにする
+    const maxPossibleHeat = numPlayers * CONFIG.MAX_HEAT;
     const heatRatio = totalHeat / maxPossibleHeat;
 
-    // 60%を超えたらリセット
     let triggerBurst = isBurst;
     if (heatRatio >= CONFIG.TRIGGER_THRESHOLD) {
         triggerBurst = true;
-        clients.forEach(c => c.heat = 0); // 全員リセット
+        players.forEach(p => p.heat = 0); // プレイヤーのみリセット
     }
 
     const payload = JSON.stringify({
-        type: triggerBurst ? 'BURST' : 'UPDATE', // 閾値を超えた時は特別なタイプを送る
+        type: triggerBurst ? 'BURST' : 'UPDATE',
         totalHeat: parseFloat(totalHeat.toFixed(2)),
         heatRatio: parseFloat(heatRatio.toFixed(3)),
-        details: Array.from(clients.values()).map(c => ({ id: c.id, heat: parseFloat(c.heat.toFixed(2)) }))
+        details: players.map(p => ({ id: p.id, heat: p.heat })) // ゲーム機はリストに出さない
     });
 
     wss.clients.forEach(client => {
@@ -53,12 +55,28 @@ setInterval(() => {
 
 wss.on('connection', (ws) => {
     const clientId = `user_${Math.random().toString(36).substr(2, 5)}`;
-    clients.set(ws, { id: clientId, heat: 0 });
     
-    ws.on('message', () => {
-        const data = clients.get(ws);
-        if (data) {
-            data.heat = Math.min(CONFIG.MAX_HEAT, data.heat + CONFIG.VOTE_BOOST);
+    // 初期状態は一旦 player にしておく
+    clients.set(ws, { id: clientId, heat: 0, role: 'player' });
+    
+    ws.on('message', (msg) => {
+        const clientData = clients.get(ws);
+        
+        // JSONを受け取れるように拡張
+        try {
+            const json = JSON.parse(msg);
+            if (json.type === 'REGISTER') {
+                clientData.role = json.role; // ここで 'game' に書き換える
+                console.log(`${clientId} registered as ${json.role}`);
+                updateAndBroadcast();
+                return;
+            }
+        } catch (e) {
+            // JSONじゃない（今までの "1" など）場合は通常の投票として処理
+        }
+
+        if (clientData && clientData.role === 'player') {
+            clientData.heat = Math.min(CONFIG.MAX_HEAT, clientData.heat + CONFIG.VOTE_BOOST);
             updateAndBroadcast();
         }
     });
