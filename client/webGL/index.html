@@ -51,6 +51,16 @@
 <body>
   <canvas id="unity-canvas"></canvas>
 
+    <button id="motionBtn" style="
+      position:absolute;
+      top:20px;
+      left:20px;
+      z-index:10;
+      padding:10px;
+    ">
+      Enable Motion
+    </button>  
+
   <!-- ローディング表示 -->
   <div id="loading">
     <div>Loading...</div>
@@ -111,9 +121,9 @@
     const loadingDiv = document.getElementById("loading");
 
     const config = {
-      dataUrl: "Build/MadHeaven.data",
-      frameworkUrl: "Build/MadHeaven.framework.js",
-      codeUrl: "Build/MadHeaven.wasm",
+      dataUrl: "Build/webGL.data.br",
+      frameworkUrl: "Build/webGL.framework.js.br",
+      codeUrl: "Build/webGL.wasm.br",
       devicePixelRatio: Math.min(window.devicePixelRatio, 2),
     };
 
@@ -121,6 +131,10 @@
       const percent = Math.floor(progress * 100);
       progressText.textContent = percent + "%";
       progressFill.style.width = percent + "%";
+      document.getElementById("motionBtn").onclick = () => {
+        requestMotionPermission();
+        document.getElementById("motionBtn").style.display = "none";
+      };
     })
     .then((unityInstance) => {
       console.log("Unity Loaded");
@@ -131,15 +145,5 @@
       alert("エラー:\n" + message);
     });
   </script>
-
-  <button id="motionBtn" style="
-    position:absolute;
-    top:20px;
-    left:20px;
-    z-index:10;
-    padding:10px;
-  ">
-    Enable Motion
-  </button>  
 </body>
 </html>
