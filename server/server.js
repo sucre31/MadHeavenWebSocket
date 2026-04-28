@@ -3,39 +3,40 @@ const port = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port });
 
 const CONFIG = {
-    MAX_HEAT: 5.0,          // 1人あたりの上限
-    DECAY_AMOUNT: 0.01,      // 減衰量
-    TICK_INTERVAL: 100,    // 減衰間隔(ms)
-    VOTE_BOOST: 1.0,        // 1回で増える量
-    TRIGGER_THRESHOLD: 0.75,  // 熱量によりトリガーする値
-    BURST_COOLDOWN: 3000 // BURST後、3秒間は入力を受け付けない
+    MAX_HEAT: 5.0,
+    DECAY_AMOUNT: 0.01,
+    TICK_INTERVAL: 100,
+    VOTE_BOOST: 1.0,
+    TRIGGER_THRESHOLD: 0.75,
+    BURST_COOLDOWN: 3000
 };
 
 const clients = new Map();
 let isCooldown = false;
 
-// 状態チェックと配信
+// =========================
+// 状態更新 & 配信
+// =========================
 function updateAndBroadcast(isBurst = false) {
-    // ロールが 'player' の人だけを抽出
     const players = Array.from(clients.values()).filter(c => c.role === 'player');
     const numPlayers = players.length;
 
-    if (numPlayers === 0) return; // プレイヤーがいないなら何もしない
+    if (numPlayers === 0) return;
 
     let totalHeat = 0;
     players.forEach(p => totalHeat += p.heat);
 
-    // 分母を「プレイヤー数」だけにする
     const maxPossibleHeat = numPlayers * CONFIG.MAX_HEAT;
     const heatRatio = totalHeat / maxPossibleHeat;
 
     let triggerBurst = isBurst;
+
     if (!isCooldown && heatRatio >= CONFIG.TRIGGER_THRESHOLD) {
         triggerBurst = true;
-        isCooldown = true; // クールダウン開始
-        players.forEach(p => p.heat = 0); // 熱量をリセット
+        isCooldown = true;
 
-        // 一定時間後にクールダウンを解除
+        players.forEach(p => p.heat = 0);
+
         setTimeout(() => {
             isCooldown = false;
             console.log("Cooldown finished.");
@@ -52,54 +53,61 @@ function updateAndBroadcast(isBurst = false) {
             x: p.x,
             y: p.y,
             accel: p.accel
-         })) // ゲーム機はリストに出さない
+        }))
     });
 
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(payload);
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+        }
     });
 }
 
-// 減衰タイマー
+// =========================
+// 減衰
+// =========================
 setInterval(() => {
     clients.forEach(data => {
-        if (data.heat > 0) data.heat = Math.max(0, data.heat - CONFIG.DECAY_AMOUNT);
+        if (data.role === 'player' && data.heat > 0) {
+            data.heat = Math.max(0, data.heat - CONFIG.DECAY_AMOUNT);
+        }
     });
     updateAndBroadcast();
 }, CONFIG.TICK_INTERVAL);
 
+// =========================
+// 接続処理
+// =========================
 wss.on('connection', (ws) => {
     const clientId = `user_${Math.random().toString(36).substr(2, 5)}`;
-    
-    // 初期状態は一旦 player にしておく
+
     clients.set(ws, {
         id: clientId,
         heat: 0,
-        role: 'player' ,
+        role: 'player',
         x: 0.5,
         y: 0.5,
         accel: 0
     });
 
-    const configPayload = JSON.stringify({
+    ws.send(JSON.stringify({
         type: 'CONFIG',
         threshold: CONFIG.TRIGGER_THRESHOLD,
         maxHeat: CONFIG.MAX_HEAT
-    });
-    ws.send(configPayload);
+    }));
 
     console.log(`connected: ${clientId}`);
-    
+
     ws.on('message', (msg) => {
         if (isCooldown) return;
-        
+
         const clientData = clients.get(ws);
-        
-        // JSONを受け取れるように拡張
+
         try {
             const json = JSON.parse(msg);
+
             if (json.type === 'REGISTER') {
-                clientData.role = json.role; // ここで 'game' に書き換える
+                clientData.role = json.role;
                 console.log(`${clientId} registered as ${json.role}`);
                 updateAndBroadcast();
                 return;
@@ -112,11 +120,9 @@ wss.on('connection', (ws) => {
                 return;
             }
 
-        } catch (e) {
-            // JSONじゃない（今までの "1" など）場合は通常の投票として処理
-        }
+        } catch (e) {}
 
-        if (clientData && clientData.role === 'player') {
+        if (clientData.role === 'player') {
             clientData.heat = Math.min(CONFIG.MAX_HEAT, clientData.heat + CONFIG.VOTE_BOOST);
             updateAndBroadcast();
         }
