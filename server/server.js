@@ -46,7 +46,13 @@ function updateAndBroadcast(isBurst = false) {
         type: triggerBurst ? 'BURST' : 'UPDATE',
         totalHeat: parseFloat(totalHeat.toFixed(2)),
         heatRatio: parseFloat(heatRatio.toFixed(3)),
-        details: players.map(p => ({ id: p.id, heat: p.heat })) // ゲーム機はリストに出さない
+        details: players.map(p => ({
+            id: p.id,
+            heat: p.heat,
+            x: p.x,
+            y: p.y,
+            accel: p.accel
+         })) // ゲーム機はリストに出さない
     });
 
     wss.clients.forEach(client => {
@@ -66,7 +72,14 @@ wss.on('connection', (ws) => {
     const clientId = `user_${Math.random().toString(36).substr(2, 5)}`;
     
     // 初期状態は一旦 player にしておく
-    clients.set(ws, { id: clientId, heat: 0, role: 'player' });
+    clients.set(ws, {
+        id: clientId,
+        heat: 0,
+        role: 'player' ,
+        x: 0.5,
+        y: 0.5,
+        accel: 0
+    });
 
     const configPayload = JSON.stringify({
         type: 'CONFIG',
@@ -91,6 +104,14 @@ wss.on('connection', (ws) => {
                 updateAndBroadcast();
                 return;
             }
+
+            if (json.type === 'INPUT') {
+                clientData.x = json.x;
+                clientData.y = json.y;
+                clientData.accel = json.accel;
+                return;
+            }
+
         } catch (e) {
             // JSONじゃない（今までの "1" など）場合は通常の投票として処理
         }
