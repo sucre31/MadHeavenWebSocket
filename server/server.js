@@ -106,6 +106,11 @@ wss.on('connection', (ws) => {
         try {
             const json = JSON.parse(msg);
 
+            if (json.type === 'PING') {
+                ws.send(JSON.stringify({ type: 'PONG' }));
+                return;
+            }
+
             if (json.type === 'REGISTER') {
                 clientData.role = json.role;
                 console.log(`${clientId} registered as ${json.role}`);
