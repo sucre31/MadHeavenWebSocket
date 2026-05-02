@@ -53,7 +53,7 @@ function updateAndBroadcast(isBurst = false) {
             x: p.x,
             y: p.y,
             accel: p.accel
-        }))
+        }) + "\n")
     });
 
     wss.clients.forEach(client => {
