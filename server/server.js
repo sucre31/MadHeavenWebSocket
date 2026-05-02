@@ -8,7 +8,7 @@ const CONFIG = {
     TICK_INTERVAL: 100,
     VOTE_BOOST: 1.0,
     TRIGGER_THRESHOLD: 0.75,
-    BURST_COOLDOWN: 3000
+    BURST_COOLDOWN: 2000
 };
 
 const clients = new Map();
